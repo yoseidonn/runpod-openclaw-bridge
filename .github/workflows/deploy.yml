@@ -7,14 +7,10 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # Map your secrets to Job-level ENVs for the 'if' logic and Compose
     env:
       RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
       RUNPOD_ENDPOINT_ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      MODEL_REPO: ${{ vars.MODEL_REPO }}
-      QUANTIZE: ${{ vars.QUANTIZE || 'true' }}
-
+      
     steps:
       - name: Checkout
         uses: actions/checkout@v4

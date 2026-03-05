@@ -2,14 +2,5 @@ services:
   worker:
     build:
       context: .
-      args:
-        - HF_TOKEN=${HF_TOKEN}         # Passed to Dockerfile to download model
-        - MODEL_REPO=${MODEL_REPO}
     image: ghcr.io/yusuf/runpod-openclaw-bridge:latest
-    environment:
-      # These go directly into os.environ for main.py
-      - HF_TOKEN=${HF_TOKEN}
-      - MODEL_REPO=${MODEL_REPO}
-      - TEMPERATURE=${TEMPERATURE:-0.7}         # Default temperature
-      - MAX_NEW_TOKENS=${MAX_NEW_TOKENS:-512}    # Default max tokens
-      - LOAD_IN_4BIT=${QUANTIZE:-true}          # Default quantization
+    env-file: .env
