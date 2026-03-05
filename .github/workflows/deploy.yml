@@ -6,6 +6,9 @@ on:
 
 jobs:
   build-and-push:
+    permissions:
+      packages: write     # Explicit write:packages for GITHUB_TOKEN
+      contents: read      # Already implicit, but good to have
     runs-on: ubuntu-latest
     env:
       RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
