@@ -1,68 +1,111 @@
-# OpenClaw RunPod Worker
-An autonomous AI agent worker built for the __OpenClaw__ ecosystem and optimized for __RunPod Serverless GPU inference__. This worker **bakes** Large Language Models (LLMs) into a Docker container to provide high-performance, low-latency reasoning for autonomous background tasks and remote triggers.
+# RunPod OpenClaw Bridge
+
+A lightweight, high-performance **inference bridge** for the **OpenClaw** ecosystem, designed to run large quantized LLMs (like Qwen 3.5B–35B GGUF models) on **RunPod Serverless GPUs**.
+
+This version uses **runtime model loading** + **RunPod Cached Models** to avoid baking huge model weights into the Docker image, solving GitHub Actions disk space limits and enabling fast, cheap, auto-scaling inference.
 
 ## Key Features
-- Serverless Optimization: Designed for RunPod Serverless—pay only for the seconds the GPU is active during a task or heartbeat.
-- Model Baking: Downloads and packages model weights (Llama 3, Mistral, etc.) during the Docker build phase to eliminate runtime download delays.
-- Hybrid CI/CD: Uses a unified Docker Compose workflow for both local development and GitHub Actions deployment.
-- Dynamic Configuration: Control inference parameters (Temperature, Max Tokens) via RunPod environment variables without rebuilding the image.
-- OpenClaw Ready: Standardized JSON I/O compatible with OpenClaw's ReAct loop and tool-calling logic.
+
+- **Runtime model loading** — downloads only once (or uses RunPod cache) → lightweight image (~2–4 GB)
+- **RunPod Cached Models** support — near-instant cold starts after first boot
+- **Pay-per-use serverless** — charged only for active inference time (scale-to-zero)
+- **GitHub Actions CI/CD** — builds → pushes to GHCR → auto-updates RunPod endpoint
+- **Local parity** — same `docker compose` workflow works locally for development & testing
+- **OpenClaw compatible** — JSON input/output ready for ReAct loops, tool calling, heartbeats
+- **4-bit quantization** — efficient memory usage via BitsAndBytes (nf4 + double quant)
 
 ## Project Structure
-```bash
-├── main.py              # RunPod Handler & Inference Logic
-├── Dockerfile           # The "Baking" Blueprint (Build-time)
-├── docker-compose.yml   # Bridge for Local/Cloud builds
-├── requirements.txt     # Python Dependencies
-├── .github/workflows/   # Automated CI/CD (GitHub Actions)
-└── .env                 # Local environment variables (Hidden)
+
+```text
+├── main.py               # RunPod handler + model loading logic
+├── Dockerfile            # Lightweight runtime image (no model baking)
+├── docker-compose.yml    # Local testing & build bridge
+├── requirements.txt      # Dependencies (transformers, runpod, bitsandbytes, etc.)
+├── .github/workflows/    # Auto-build, push & RunPod update
+└── .env.example          # Template for local env vars (gitignore'd)
 ```
 
-## Setup & Deployment
-1. Local Development
-To build and test the worker on your local machine:
-
-1.1. Create a .env file:
+## Quick Start – Local Development
+1. Clone the repo
 ```bash
-HF_TOKEN=your_huggingface_token
-MODEL_REPO=meta-llama/Llama-3-8B
+git clone https://github.com/yusuf/runpod-openclaw-bridge.git
+cd runpod-openclaw-bridge
 ```
 
-1.2. Build using Docker Compose:
+2. Copy and fill .env (for local testing only)Bashcp .env.example .env
+Edit .env with your values:
+```bash
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+MODEL_REPO=unsloth/Qwen3.5-35B-A3B-GGUF
+```
+
+3. Build & run locally (GPU recommended)
 ```bash
 docker compose build
+docker compose up
 ```
 
-1.3. Test the handler logic:
+→ The container will download the model on first run (may take 5–20 min), then start the handler.
+4. Test locally (from another terminal)
 ```bash
-python main.py --test_input '{"input": {"prompt": "Check VPS status"}}'
+curl -X POST http://localhost:8000/run \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"prompt": "Tell me a short joke about Istanbul traffic"}}'Or use /runsync for blocking response.
 ```
 
-2. GitHub Actions Deployment
-The repository is configured to build and push to GHCR (GitHub Container Registry) automatically on every push to main.
+## Deployment to RunPod Serverless
+### Push to GitHub (main branch)
+→ GitHub Actions automatically:
+Builds the lightweight image
+Pushes to ghcr.io/yusuf/runpod-openclaw-bridge:latest
+Triggers RunPod endpoint update (if secrets are set)
 
-Required GitHub Secrets:
-- HF_TOKEN: Your Hugging Face Read Token (required for gated models).
-- RUNPOD_API_KEY (Optional): To trigger automatic endpoint updates.
-- RUNPOD_ENDPOINT_ID (Optional): Your specific Serverless Endpoint ID.
+### Configure the RunPod Endpoint (one-time)
+Create new Serverless Endpoint → Load Balancer type
+Container image: ghcr.io/yusuf/runpod-openclaw-bridge:latest
+GPU: 24 GB (RTX 3090 / L4 class recommended)
+Container disk: 80–100 GB (fallback download safety)
+Model field: https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF (enables caching)
+Start command: leave blank (uses Dockerfile CMD)
+Ports: leave blank (uses internal 8000)
 
-Required GitHub Variables:
-- MODEL_REPO: The model to bake (e.g., meta-llama/Llama-3-8B).
+Environment variables:
+```text
+MODEL_REPO=unsloth/Qwen3.5-35B-A3B-GGUF
+HF_TOKEN=          (set as Secret)
+LOAD_IN_4BIT=true
+MAX_NEW_TOKENS=512
+TEMPERATURE=0.7
+```
 
-## Runtime Configuration (RunPod Dashboard)
-Once deployed, you can tune the worker's behavior in the RunPod Console using these Environment Variables:
-| Varbiables  | Default  | Description  |
-|---|---|---|
-| MAX_NEW_TOKENS  | 512  | Limits the length of the AI response.  |
-|  TEMPERATURE | 0.7  | Controls the "creativity" of the model.  |
+Test the endpoint
+```bash
+curl -X POST https://<your-endpoint-id>.api.runpod.ai/runsync \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"prompt": "Write a haiku about the Bosphorus at night"}}'
+```  
+First request may take 5–20 minutes (cold start + model load/cache). Subsequent requests are fast if worker stays warm.
 
-## Security & Best Practices
-Secret Management: Secrets are passed as Build Arguments (ARG) during the Docker build phase and are never committed to the repository.
+## Required GitHub Secrets (for CI/CD)
+| Secret | Required? | Purpose |
+|--------|-----------|---------|
+| GITHUB_TOKEN | Auto | Used by docker/login-action |
+| RUNPOD_API_KEY | Optional | Auto-update RunPod endpoint after push |
+| RUNPOD_ENDPOINT_ID | Optional | Your endpoint ID to update |
 
-Containerization: The worker runs in an isolated environment. If granting the agent SSH access to manage VPS servers, use a dedicated, low-privilege SSH key.
+## Billing & Cost Notes
+Pay-per-use: Charged per second of active worker time (~$0.00019/s for 24 GB Flex).
+Cold starts: First boot + model load can cost $0.05–$0.30 once.
+Idle: $0 if min workers = 0 (scale-to-zero).
+Always-warm option: Set min workers = 1 → ~$15–25/day (good for low-latency needs).
+Prepaid credits: Add $10–$20 via dashboard to start (auto-recharge recommended).
 
-DevOps Standards: Follows a "Build once, run anywhere" philosophy using Docker Compose parity.
+## Security Notes
+- Never commit HF_TOKEN or other secrets.
+- Use Secrets in RunPod dashboard for sensitive values.
+- Endpoint is public by default — add auth in handler if needed later.
 
-
-## 🎓 About the Project
-Developed by __Yusuf (github@yoseidonn)__, a Computer Science student at Istanbul University - Cerrahpaşa and DevOps Intern at Onkatec. This project explores the intersection of Backend Development, Network Security, and Autonomous AI Systems.
+## About
+Built by Yusuf __(@yoseidonn)__ — exploring autonomous AI agents, serverless inference, and DevOps automation.
+Questions / issues? Open an issue or reach out on GitHub.
+Happy inferencing! 
