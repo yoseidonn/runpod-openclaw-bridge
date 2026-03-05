@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/yusuf/runpod-openclaw-bridge:latest
+    image: ghcr.io/yoseidonn/runpod-openclaw-bridge:latest
 
     # These are ONLY for convenient LOCAL testing
     # They get completely ignored/overwritten by RunPod
