@@ -3,11 +3,11 @@ FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
 WORKDIR /app
 
-# 1. Setup Build Arguments (The "Gates")
+# 1. Set Build Arguments as Environment Variables
 ARG HF_TOKEN
 ARG MODEL_REPO="meta-llama/Llama-3-8B"
 
-# 2. Install Python dependencies
+# 2. Install Python Dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
