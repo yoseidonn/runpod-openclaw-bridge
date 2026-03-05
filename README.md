@@ -47,7 +47,7 @@ Required GitHub Secrets:
 - RUNPOD_ENDPOINT_ID (Optional): Your specific Serverless Endpoint ID.
 
 Required GitHub Variables:
-- RUNPOD_MODEL_REPO: The model to bake (e.g., meta-llama/Llama-3-8B).
+- MODEL_REPO: The model to bake (e.g., meta-llama/Llama-3-8B).
 
 ## Runtime Configuration (RunPod Dashboard)
 Once deployed, you can tune the worker's behavior in the RunPod Console using these Environment Variables:
