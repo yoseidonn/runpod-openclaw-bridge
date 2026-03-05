@@ -2,5 +2,23 @@ services:
   worker:
     build:
       context: .
+      dockerfile: Dockerfile
     image: ghcr.io/yusuf/runpod-openclaw-bridge:latest
-    env-file: .env
+
+    # These are ONLY for convenient LOCAL testing
+    # They get completely ignored/overwritten by RunPod
+    environment:
+      - MODEL_REPO=${MODEL_REPO:-unsloth/Qwen3.5-35B-A3B-GGUF}   # sensible local default
+      - HF_TOKEN=${HF_TOKEN}                                     # leave blank or use your local token
+      - LOAD_IN_4BIT=${LOAD_IN_4BIT:-true}
+      - MAX_NEW_TOKENS=${MAX_NEW_TOKENS:-512}
+      - TEMPERATURE=${TEMPERATURE:-0.7}
+
+    # Nice for local GPU testing
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
