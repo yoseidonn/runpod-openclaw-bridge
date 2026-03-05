@@ -1,0 +1,8 @@
+services:
+  worker:
+    build:
+      context: .
+      args:
+        - HF_TOKEN=${HF_TOKEN}
+        - MODEL_REPO=${MODEL_REPO}
+    image: yusuf/runpod-openclaw-bridge:latest
