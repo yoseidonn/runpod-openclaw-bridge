@@ -1,14 +1,19 @@
-# Use a high-performance PyTorch image
-FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
+FROM runpod/pytorch:2.2.1-py3.10-cuda12.1.1-devel-ubuntu22.04
 
+# Install dependencies
+RUN pip install --no-cache-dir runpod vllm huggingface-hub
+
+# Download and bake the model during build (adjust path if needed)
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='Qwen/Qwen3.5-35B-A3B-GPTQ-Int4', local_dir='/models/Qwen3.5-35B-A3B-GPTQ-Int4')"
+
+# Set working dir
 WORKDIR /app
 
-# 1. Install Python Dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy your handler code
+COPY handler.py /app/handler.py
 
-# 2. Copy the Runtime Handler
-COPY main.py .
+# Expose port if needed (RunPod handles this)
+EXPOSE 8000
 
-# 3. Run the Worker
-CMD [ "python", "-u", "main.py" ]
+# RunPod serverless entrypoint
+CMD ["python", "-u", "/app/handler.py"]
