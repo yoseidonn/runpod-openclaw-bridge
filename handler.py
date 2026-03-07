@@ -12,6 +12,8 @@ DEFAULT_TEMPERATURE = float(os.getenv("TEMPERATURE", 0.7))
 DEFAULT_TOP_P = float(os.getenv("TOP_P", 0.95))
 DEFAULT_MAX_TOKENS = int(os.getenv("MAX_TOKENS", 128))
 GPU_MEMORY_UTILIZATION = float(os.getenv("GPU_MEMORY_UTILIZATION", 0.95))
+CPU_OFFLOAD_GB = float(os.getenv("CPU_OFFLOAD_GB", 0))  # 0 = no offload; >0 offloads to CPU RAM
+VLLM_DEVICE = os.getenv("VLLM_DEVICE", "gpu")  # Options: "auto", "cuda", "cpu", etc.
 
 # -------------------------
 # RunPod handler
@@ -47,9 +49,10 @@ if __name__ == "__main__":
     llm = LLM(
         model=MODEL_PATH,
         dtype="auto",
-        gpu_memory_utilization=GPU_MEMORY_UTILIZATION
+        gpu_memory_utilization=GPU_MEMORY_UTILIZATION,
+        cpu_offload_gb=CPU_OFFLOAD_GB,  # Env-managed offload
+        device=VLLM_DEVICE  # Env-managed device selection
     )
-
 
     # -------------------------
     # Start RunPod worker

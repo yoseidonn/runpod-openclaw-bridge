@@ -1,111 +1,139 @@
-# RunPod OpenClaw Bridge
+# OpenClaw Bridge: Universal LLM Inference Server (vLLM, Qwen-3.5-35B-A3B-GPTQ-Int4)
 
-A lightweight, high-performance **inference bridge** for the **OpenClaw** ecosystem, designed to run large quantized LLMs (like Qwen 3.5B–35B GGUF models) on **RunPod Serverless GPUs**.
+[![RunPod](https://img.shields.io/badge/Platform-RunPod-blue.svg)](https://runpod.io) [![Model](https://img.shields.io/badge/Model-Qwen3.5--35B--A3B--GPTQ--Int4-green.svg)](https://huggingface.co/Qwen/Qwen3.5-35B-A3B-GPTQ-Int4) [![vLLM](https://img.shields.io/badge/Engine-vLLM-orange.svg)](https://vllm.ai)
 
-This version uses **runtime model loading** + **RunPod Cached Models** to avoid baking huge model weights into the Docker image, solving GitHub Actions disk space limits and enabling fast, cheap, auto-scaling inference.
+## Overview
 
-## Key Features
+OpenClaw Bridge is a high-efficiency LLM (Large Language Model) inference server using vLLM and the quantized Qwen 3.5 35B-A3B GPTQ-Int4 model. It is easily deployable across platforms: run it in serverless mode on RunPod, self-host as a Docker container for local development, use on your own VM or server (cloud or on-premises), or run on other container-compatible services.
 
-- **Runtime model loading** — downloads only once (or uses RunPod cache) → lightweight image (~2–4 GB)
-- **RunPod Cached Models** support — near-instant cold starts after first boot
-- **Pay-per-use serverless** — charged only for active inference time (scale-to-zero)
-- **GitHub Actions CI/CD** — builds → pushes to GHCR → auto-updates RunPod endpoint
-- **Local parity** — same `docker compose` workflow works locally for development & testing
-- **OpenClaw compatible** — JSON input/output ready for ReAct loops, tool calling, heartbeats
-- **4-bit quantization** — efficient memory usage via BitsAndBytes (nf4 + double quant)
+The Docker image includes the baked model for fast cold starts and avoids runtime downloads.
 
-## Project Structure
+Key components:
+- **Handler Script**: Handles HTTP/RunPod jobs and runs inference using vLLM.
+- **Dockerfile**: Pre-loads the quantized model for reproducibility and low startup latency.
+- **Flexible Environment Config**: Control model path, sampling, device selection via environment variables.
+- **GitHub Workflow**: Automate builds and pushes.
 
+## Features
+
+- **Universal Inference Server**: Run anywhere Docker is available—locally, on VMs, on-premises, or in the cloud.
+- **Serverless or Traditional**: Designed for RunPod serverless but also works in standard HTTP server or job-based setups.
+- **Efficient**: Quantized weights dramatically reduce VRAM (~20-25GB), suitable for A100/H100, workstation-class, or cloud GPUs.
+- **RESTful Endpoints**: Supports both batch (async `/run`) and synchronous (`/runsync`) usage.
+- **Easy Configuration**: Use env vars to tune compute and sampling.
+- **Customizable**: All settings can be set via environment (defaults included).
+
+## Requirements
+
+- **Docker**: To run the container on any system or cloud provider.
+- **NVIDIA GPU (Recommended)**: 40GB+ VRAM (e.g., A100/H100) for optimal performance.
+- **Cloud/VM/Server**: Any Linux or Windows host with Docker (AWS, GCP, Azure, Paperspace, Lambda Labs, local etc).
+- **RunPod Account** (for managed serverless deployment; optional).
+- **Build/Deploy Registry**: (Optional) Docker Hub or GitHub Container Registry if deploying remotely.
+- **Python dependencies baked in:**
 ```text
-├── main.py               # RunPod handler + model loading logic
-├── Dockerfile            # Lightweight runtime image (no model baking)
-├── docker-compose.yml    # Local testing & build bridge
-├── requirements.txt      # Dependencies (transformers, runpod, bitsandbytes, etc.)
-├── .github/workflows/    # Auto-build, push & RunPod update
-└── .env.example          # Template for local env vars (gitignore'd)
+runpod==1.7.0
+torch==2.3.1
+vllm==0.6.1
+huggingface-hub==0.24.6
 ```
 
-## Quick Start – Local Development
-1. Clone the repo
+## Setup
+
+### 1. Clone the Repository
 ```bash
-git clone https://github.com/yusuf/runpod-openclaw-bridge.git
-cd runpod-openclaw-bridge
+git clone https://github.com/yourusername/openclaw-bridge.git
+cd openclaw-bridge
 ```
 
-2. Copy and fill .env (for local testing only)Bashcp .env.example .env
-Edit .env with your values:
+### 2. Build the Docker Image (Model is downloaded at build time)
 ```bash
-HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-MODEL_REPO=unsloth/Qwen3.5-35B-A3B-GGUF
+docker build -t openclaw-bridge:latest .
 ```
+Or use the GitHub workflow in this repo for automated CI builds.
 
-3. Build & run locally (GPU recommended)
+### 3. Deployment Options
+
+#### **A. Run Locally (Bare Metal or with Docker)**
 ```bash
-docker compose build
-docker compose up
+docker run --gpus all --rm -p 8000:8000 \
+  -e MODEL_PATH=/models/Qwen3.5-35B-A3B-GPTQ-Int4 \
+  openclaw-bridge:latest
 ```
+- `--gpus all` enables GPU support (omit for CPU-only, noting performance will be very slow).
+- Customize with environment variables as needed (see below).
+- The server listens on port 8000 (or as configured).
 
-→ The container will download the model on first run (may take 5–20 min), then start the handler.
-4. Test locally (from another terminal)
+#### **B. Deploy to Cloud VM or GPU Rental**
+- Build or pull the image as above.
+- Launch a VM with a suitable GPU (AWS EC2, GCP, Azure, Lambda Labs, Paperspace, etc).
+- Run the container with your environment/tuning options.
+- Expose and secure port 8000 for remote API access as needed.
+
+#### **C. Serverless on RunPod**
+- Go to RunPod > Serverless > New Endpoint.
+- Select your public container image.
+- Configure resources & environment (see below).
+- Save and deploy: RunPod handles scaling automatically.
+
+#### **D. Other Platforms**
+- Use on any infrastructure supporting Docker, e.g. Kubernetes, Docker Compose, local workstation, or compatible cloud container services.
+
+## Usage
+
+### API Endpoints
+
+OpenClaw Bridge runs a RunPod-compatible handler interface. Primary endpoints:
+- `/runsync` — Synchronous (response in HTTP body).
+- `/run` — Asynchronous (get job ID; poll `/status/<job_id>` for result).
+
+Sample usage (`/runsync` endpoint shown):
+
+#### Example Curl Request (local or remote, replace host/port as needed)
 ```bash
-curl -X POST http://localhost:8000/run \
+curl -X POST http://localhost:8000/runsync \
   -H "Content-Type: application/json" \
-  -d '{"input": {"prompt": "Tell me a short joke about Istanbul traffic"}}'Or use /runsync for blocking response.
+  -d '{
+    "input": {
+      "prompt": "Generate a Python function for factorial.",
+      "max_tokens": 256,
+      "temperature": 0.7,
+      "top_p": 0.95
+    }
+  }'
 ```
+- For RunPod deployments, use your assigned endpoint and API key.
+- For local/cloud deployments, point to your deployed host:port.
 
-## Deployment to RunPod Serverless
-### Push to GitHub (main branch)
-→ GitHub Actions automatically:
-Builds the lightweight image
-Pushes to ghcr.io/yusuf/runpod-openclaw-bridge:latest
-Triggers RunPod endpoint update (if secrets are set)
+#### Handler Logic
 
-### Configure the RunPod Endpoint (one-time)
-Create new Serverless Endpoint → Load Balancer type
-Container image: ghcr.io/yusuf/runpod-openclaw-bridge:latest
-GPU: 24 GB (RTX 3090 / L4 class recommended)
-Container disk: 80–100 GB (fallback download safety)
-Model field: https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF (enables caching)
-Start command: leave blank (uses Dockerfile CMD)
-Ports: leave blank (uses internal 8000)
+- **Input**: JSON with `prompt` (required), optional `temperature`, `top_p`, `max_tokens`.
+- **Output**: JSON with `output` (model-generated text).
+- All parameters fall back to values specified via environment variables if not present in request.
 
-Environment variables:
-```text
-MODEL_REPO=unsloth/Qwen3.5-35B-A3B-GGUF
-HF_TOKEN=          (set as Secret)
-LOAD_IN_4BIT=true
-MAX_NEW_TOKENS=512
-TEMPERATURE=0.7
-```
+## Environment Variables
 
-Test the endpoint
-```bash
-curl -X POST https://<your-endpoint-id>.api.runpod.ai/runsync \
-  -H "Content-Type: application/json" \
-  -d '{"input": {"prompt": "Write a haiku about the Bosphorus at night"}}'
-```  
-First request may take 5–20 minutes (cold start + model load/cache). Subsequent requests are fast if worker stays warm.
+Set via `-e <KEY>=<VALUE>` when launching Docker, or in your cloud/serverless provider:
 
-## Required GitHub Secrets (for CI/CD)
-| Secret | Required? | Purpose |
-|--------|-----------|---------|
-| GITHUB_TOKEN | Auto | Used by docker/login-action |
-| RUNPOD_API_KEY | Optional | Auto-update RunPod endpoint after push |
-| RUNPOD_ENDPOINT_ID | Optional | Your endpoint ID to update |
+- `MODEL_PATH` (default: `/models/Qwen3.5-35B-A3B-GPTQ-Int4`)
+- `TEMPERATURE` (default: `0.7`)
+- `TOP_P` (default: `0.95`)
+- `MAX_TOKENS` (default: `128`)
+- `GPU_MEMORY_UTILIZATION` (default: `0.95`)
+- `CPU_OFFLOAD_GB` (default: `0`)
+- `VLLM_DEVICE` (default: `auto`; options: `auto`, `cuda`, `cpu`)
 
-## Billing & Cost Notes
-Pay-per-use: Charged per second of active worker time (~$0.00019/s for 24 GB Flex).
-Cold starts: First boot + model load can cost $0.05–$0.30 once.
-Idle: $0 if min workers = 0 (scale-to-zero).
-Always-warm option: Set min workers = 1 → ~$15–25/day (good for low-latency needs).
-Prepaid credits: Add $10–$20 via dashboard to start (auto-recharge recommended).
+## Troubleshooting
 
-## Security Notes
-- Never commit HF_TOKEN or other secrets.
-- Use Secrets in RunPod dashboard for sensitive values.
-- Endpoint is public by default — add auth in handler if needed later.
+- **Cold Start**: First request may be slow; subsequent calls are fast.
+- **VRAM Errors**: Lower `GPU_MEMORY_UTILIZATION` or use `CPU_OFFLOAD_GB`.
+- **Multiprocessing Issues**: Use Python main guard (`if __name__ == "__main__"`) for proper model init.
+- **Logs**: Container and application logs will reveal most issues.
 
-## About
-Built by Yusuf __(@yoseidonn)__ — exploring autonomous AI agents, serverless inference, and DevOps automation.
-Questions / issues? Open an issue or reach out on GitHub.
-Happy inferencing! 
+## Contributing
+
+Pull requests are welcome for general improvements, bugfixes, or new features. Please open an issue for discussion if proposing major changes.
+
+## License
+
+MIT License. See LICENSE for details.
