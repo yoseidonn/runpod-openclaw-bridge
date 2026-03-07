@@ -14,16 +14,6 @@ DEFAULT_MAX_TOKENS = int(os.getenv("MAX_TOKENS", 128))
 GPU_MEMORY_UTILIZATION = float(os.getenv("GPU_MEMORY_UTILIZATION", 0.95))
 
 # -------------------------
-# Load model once at worker start
-# -------------------------
-
-llm = LLM(
-    model=MODEL_PATH,
-    dtype="auto",
-    gpu_memory_utilization=GPU_MEMORY_UTILIZATION
-)
-
-# -------------------------
 # RunPod handler
 # -------------------------
 
@@ -48,8 +38,20 @@ def handler(job):
         "output": outputs[0].outputs[0].text
     }
 
-# -------------------------
-# Start RunPod worker
-# -------------------------
 
-runpod.serverless.start({"handler": handler})
+if __name__ == "__main__":
+    # -------------------------
+    # Load model once at worker start
+    # -------------------------
+
+    llm = LLM(
+        model=MODEL_PATH,
+        dtype="auto",
+        gpu_memory_utilization=GPU_MEMORY_UTILIZATION
+    )
+
+
+    # -------------------------
+    # Start RunPod worker
+    # -------------------------
+    runpod.serverless.start({"handler": handler})
